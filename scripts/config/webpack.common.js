@@ -1,8 +1,16 @@
 const { resolve } = require('path')
 const HtmlWebpackPlugin = require('html-webpack-plugin')
+const CopyPlugin = require('copy-webpack-plugin')
+const WebpackBar = require('webpackbar')
+const ForkTsCheckerWebpackPlugin = require('fork-ts-checker-webpack-plugin')
+const HardSourceWebpackPlugin = require('hard-source-webpack-plugin')
+const MiniCssExtractPlugin = require('mini-css-extract-plugin')
 const { IS_DEV, PROJECT_PATH } = require('../constant')
+const TerserPlugin = require('terser-webpack-plugin')
+const OptimizeCssAssetsPlugin = require('optimize-css-assets-webpack-plugin')
+const webpack = require('webpack')
 const getCssLoaders = importLoaders => [
-  'style-loader',
+  IS_DEV ? 'style-loader' : MiniCssExtractPlugin.loader,
   {
     loader: 'css-loader',
     options: {
@@ -30,10 +38,17 @@ const getCssLoaders = importLoaders => [
 ]
 
 module.exports = {
-  entry: { app: resolve(PROJECT_PATH, './src/app.js') },
+  entry: { app: resolve(PROJECT_PATH, './src/index.tsx') },
   output: {
     filename: `js/[name]${IS_DEV ? '' : '.[hash:8]'}.js`,
     path: resolve(PROJECT_PATH, './dist'),
+  },
+  resolve: {
+    extensions: ['.tsx', '.ts', '.js', '.json'],
+    alias: {
+      Src: resolve(PROJECT_PATH, './src'),
+      Components: resolve(PROJECT_PATH, './src/components'),
+    },
   },
   plugins: [
     new HtmlWebpackPlugin({
@@ -56,7 +71,59 @@ module.exports = {
             useShortDoctype: true,
           },
     }),
+    new CopyPlugin({
+      patterns: [
+        {
+          context: resolve(PROJECT_PATH, './public'),
+          from: '*',
+          to: resolve(PROJECT_PATH, './dist'),
+          toType: 'dir',
+        },
+      ],
+    }),
+    new WebpackBar({
+      name: IS_DEV ? '正在启动' : '正在打包',
+      color: '#fa8c16',
+    }),
+    new ForkTsCheckerWebpackPlugin({
+      typescript: {
+        configFile: resolve(PROJECT_PATH, './tsconfig.json'),
+      },
+    }),
+    new HardSourceWebpackPlugin(),
+    !IS_DEV &&
+      new MiniCssExtractPlugin({
+        filename: 'css/[name].[contenthash:8].css',
+        chunkFilename: 'css/[name].[contenthash:8].css',
+        ignoreOrder: false,
+      }),
+    new webpack.BannerPlugin({
+      raw: true,
+      banner: '/** @preserve Powered by react-ts-starter */',
+    }),
   ],
+  externals: {
+    react: 'React',
+    'react-dom': 'ReactDOM',
+  },
+  // 懒加载独立chunk文件
+  optimization: {
+    minimize: !IS_DEV,
+    minimizer: [
+      !IS_DEV &&
+        new TerserPlugin({
+          extractComments: false,
+          terserOptions: {
+            compress: { pure_funcs: ['console.log'] },
+          },
+        }),
+      !IS_DEV && new OptimizeCssAssetsPlugin(),
+    ].filter(Boolean),
+    splitChunks: {
+      chunks: 'all',
+      name: true,
+    },
+  },
   module: {
     rules: [
       {
@@ -111,6 +178,12 @@ module.exports = {
             },
           },
         ],
+      },
+      {
+        test: /\.(tsx|js)$/,
+        loader: 'babel-loader',
+        options: { cacheDirectory: true },
+        exclude: /node_modules/,
       },
     ],
   },
